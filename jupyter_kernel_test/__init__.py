@@ -10,16 +10,56 @@ except ImportError:   # Python 2
 from jupyter_client.manager import start_new_kernel
 from .messagespec import validate_message, MimeBundle
 
+import pprint
+
 TIMEOUT = 15
 
 __version__ = '0.1'
 
+
+# patching functions used to implement show_traffic
+def patch_get(f):
+    """
+    Monkey patch KernelClient.shell_channel.get_msg to pprint (a subset) of
+    sent shell messages (just the `content` and `msg_type`). These responses
+    are indented 20 chars compared to sent messages.
+    """
+    def get_msg_pprint(*args, **kwargs):
+        msg = f(*args, **kwargs)
+        disp_msg = {'content': msg.get('content', ''),
+                    'msg_type': msg.get('msg_type', '')}
+        text = pprint.pformat(disp_msg, width=60, depth=4)
+        print('\n'.join((' '*20) + t for t in text.split('\n')))
+        print('-'*80)
+        return msg
+    return get_msg_pprint
+
+def patch_send(f):
+    """
+    Monkey patch KernelClient.shell_channel.send_msg to pprint sent messages.
+    """
+    def send_pprint(msg, *args, **kwargs):
+        disp_msg = {'content': msg.get('content', ''),
+                    'msg_type': msg.get('msg_type', '')}
+        pprint.pprint(disp_msg, width=60, depth=4)
+        print('-'*80)
+        return f(msg, *args, **kwargs)
+    return send_pprint
+
 class KernelTests(TestCase):
     kernel_name = ""
+    show_traffic = False
 
     @classmethod
     def setUpClass(cls):
         cls.km, cls.kc = start_new_kernel(kernel_name=cls.kernel_name)
+        if cls.show_traffic:
+            # patch the shell channel only to display the messages
+            # we could do this to the iopub socket also, but most interesting
+            # messages for conformance will be on shell
+            cls.kc.shell_channel.get_msg = patch_get(cls.kc.shell_channel.get_msg)
+            cls.kc.shell_channel.send = patch_send(cls.kc.shell_channel.send)
+
 
     @classmethod
     def tearDownClass(cls):

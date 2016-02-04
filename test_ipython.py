@@ -6,6 +6,9 @@ import jupyter_kernel_test as jkt
 class IRkernelTests(jkt.KernelTests):
     kernel_name = "python3"
 
+    # whether to print out the messages between the client and kernel
+    show_traffic = True
+
     language_name = "python"
 
     code_hello_world = "print('hello, world')"
