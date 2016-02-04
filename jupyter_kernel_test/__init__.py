@@ -47,7 +47,8 @@ class KernelTests(TestCase):
 
         if self.language_name:
             self.assertEqual(reply['content']['language_info']['name'],
-                             self.language_name)
+                             self.language_name,
+                             msg="Language name in kernel_info didn't match language_name")
 
     def execute_helper(self, code, timeout=TIMEOUT):
         msg_id = self.kc.execute(code=code)
@@ -57,17 +58,20 @@ class KernelTests(TestCase):
 
         busy_msg = self.kc.iopub_channel.get_msg(timeout=1)
         validate_message(busy_msg, 'status', msg_id)
-        self.assertEqual(busy_msg['content']['execution_state'], 'busy')
+        self.assertEqual(busy_msg['content']['execution_state'], 'busy',
+                         msg="Expected a status message with execution_state=busy after code execution")
 
         output_msgs = []
         while True:
             msg = self.kc.iopub_channel.get_msg(timeout=0.1)
             validate_message(msg, msg['msg_type'], msg_id)
             if msg['msg_type'] == 'status':
-                self.assertEqual(msg['content']['execution_state'], 'idle')
+                self.assertEqual(msg['content']['execution_state'], 'idle',
+                                 msg="Expected a status message with execution_state=idle after execute, busy (code ran for too long?)")
                 break
             elif msg['msg_type'] == 'execute_input':
-                self.assertEqual(msg['content']['code'], code)
+                self.assertEqual(msg['content']['code'], code,
+                                 msg="Code in execute_input message didn't match the executed code")
                 continue
             output_msgs.append(msg)
 
@@ -82,12 +86,17 @@ class KernelTests(TestCase):
         self.flush_channels()
         reply, output_msgs = self.execute_helper(code=self.code_hello_world)
 
-        self.assertEqual(reply['content']['status'], 'ok')
+        self.assertEqual(reply['content']['status'], 'ok',
+                         msg="execute_reply had status != ok")
 
-        self.assertGreaterEqual(len(output_msgs), 1)
-        self.assertEqual(output_msgs[0]['msg_type'], 'stream')
-        self.assertEqual(output_msgs[0]['content']['name'], 'stdout')
-        self.assertIn('hello, world', output_msgs[0]['content']['text'])
+        self.assertGreaterEqual(len(output_msgs), 1,
+                                msg="Got no messages on iopub socket after code execution")
+        self.assertEqual(output_msgs[0]['msg_type'], 'stream',
+                         msg="Expected a `stream` message on iopub")
+        self.assertEqual(output_msgs[0]['content']['name'], 'stdout',
+                         msg="Expected name=stdout in stream message")
+        self.assertIn('hello, world', output_msgs[0]['content']['text'],
+                      msg="Expected stdout to contain string 'hello, world'")
 
     completion_samples = []
 
@@ -101,7 +110,8 @@ class KernelTests(TestCase):
             validate_message(reply, 'complete_reply', msg_id)
             if 'matches' in sample:
                 self.assertEqual(set(reply['content']['matches']),
-                                 set(sample['matches']))
+                                 set(sample['matches']),
+                                 msg="Completion request didn't return expected results")
 
     complete_code_samples = []
     incomplete_code_samples = []
@@ -142,14 +152,18 @@ class KernelTests(TestCase):
         self.flush_channels()
 
         reply, output_msgs = self.execute_helper(self.code_page_something)
-        self.assertEqual(reply['content']['status'],  'ok')
+        self.assertEqual(reply['content']['status'], 'ok',
+                         msg="Expected status=ok in execute_reply")
         payloads = reply['content']['payload']
-        self.assertEqual(len(payloads), 1)
-        self.assertEqual(payloads[0]['source'], 'page')
+        self.assertEqual(len(payloads), 1,
+                         msg="Expected a single payload in pager execute_reply")
+        self.assertEqual(payloads[0]['source'], 'page',
+                         msg="Expected payload[0].source to be 'page'")
         mimebundle = payloads[0]['data']
         # Validate the mimebundle
         MimeBundle().data = mimebundle
-        self.assertIn('text/plain', mimebundle)
+        self.assertIn('text/plain', mimebundle,
+                      msg="Expected payload[0].data to have 'text/plain' content")
 
     code_generate_error = ""
 
@@ -160,7 +174,8 @@ class KernelTests(TestCase):
         self.flush_channels()
 
         reply, output_msgs = self.execute_helper(self.code_generate_error)
-        self.assertEqual(reply['content']['status'], 'error')
+        self.assertEqual(reply['content']['status'], 'error',
+                         msg="Expected execute_reply to have status=error")
 
     code_execute_result = []
 
@@ -173,13 +188,18 @@ class KernelTests(TestCase):
 
             reply, output_msgs = self.execute_helper(sample['code'])
 
-            self.assertEqual(reply['content']['status'], 'ok')
+            self.assertEqual(reply['content']['status'], 'ok',
+                             msg="Expected execute_reply to have status=ok")
 
-            self.assertGreaterEqual(len(output_msgs), 1)
-            self.assertEqual(output_msgs[0]['msg_type'], 'execute_result')
-            self.assertIn('text/plain', output_msgs[0]['content']['data'])
+            self.assertGreaterEqual(len(output_msgs), 1,
+                                    msg="Got no messages on iopub socket after code execution")
+            self.assertEqual(output_msgs[0]['msg_type'], 'execute_result',
+                             msg="Expected an execute_result message")
+            self.assertIn('text/plain', output_msgs[0]['content']['data'],
+                          msg="Expected data to contain 'text/plain'")
             self.assertEqual(output_msgs[0]['content']['data']['text/plain'],
-                             sample['result'])
+                             sample['result'],
+                             msg="execute_result contents didn't match string supplied")
 
     code_display_data = []
 
@@ -191,8 +211,12 @@ class KernelTests(TestCase):
             self.flush_channels()
             reply, output_msgs = self.execute_helper(sample['code'])
 
-            self.assertEqual(reply['content']['status'], 'ok')
+            self.assertEqual(reply['content']['status'], 'ok',
+                             msg="Expected execute_reply to have status=ok")
 
-            self.assertGreaterEqual(len(output_msgs), 1)
-            self.assertEqual(output_msgs[0]['msg_type'], 'display_data')
-            self.assertIn(sample['mime'], output_msgs[0]['content']['data'])
+            self.assertGreaterEqual(len(output_msgs), 1,
+                                    msg="Got no messages on iopub socket after code execution")
+            self.assertEqual(output_msgs[0]['msg_type'], 'display_data',
+                             msg="Expected a display_data message")
+            self.assertIn(sample['mime'], output_msgs[0]['content']['data'],
+                          msg="display_data didn't contain the expected MIME type")
