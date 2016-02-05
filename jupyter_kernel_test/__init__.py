@@ -18,17 +18,19 @@ __version__ = '0.1'
 
 
 # patching functions used to implement show_traffic
-def patch_get(f):
+def patch_get(f, channel):
     """
-    Monkey patch KernelClient.shell_channel.get_msg to pprint (a subset) of
-    sent shell messages (just the `content` and `msg_type`). These responses
-    are indented 20 chars compared to sent messages.
+    Monkey patch KernelClient.(shell|iopub)_channel.get_msg to pprint (a
+    subset) of sent shell messages (just the `content` and `msg_type`, and add
+    a channel name). These responses are indented 20 chars compared to sent
+    messages to distinguish them.
     """
     def get_msg_pprint(*args, **kwargs):
         msg = f(*args, **kwargs)
         disp_msg = {'content': msg.get('content', ''),
-                    'msg_type': msg.get('msg_type', '')}
-        text = pprint.pformat(disp_msg, width=60, depth=4)
+                    'msg_type': msg.get('msg_type', ''),
+                    'channel': channel}
+        text = pprint.pformat(disp_msg, width=60, depth=5)
         print('\n'.join((' '*20) + t for t in text.split('\n')))
         print('-'*80)
         return msg
@@ -41,7 +43,7 @@ def patch_send(f):
     def send_pprint(msg, *args, **kwargs):
         disp_msg = {'content': msg.get('content', ''),
                     'msg_type': msg.get('msg_type', '')}
-        pprint.pprint(disp_msg, width=60, depth=4)
+        pprint.pprint(disp_msg, width=60, depth=5)
         print('-'*80)
         return f(msg, *args, **kwargs)
     return send_pprint
@@ -54,10 +56,11 @@ class KernelTests(TestCase):
     def setUpClass(cls):
         cls.km, cls.kc = start_new_kernel(kernel_name=cls.kernel_name)
         if cls.show_traffic:
-            # patch the shell channel only to display the messages
-            # we could do this to the iopub socket also, but most interesting
-            # messages for conformance will be on shell
-            cls.kc.shell_channel.get_msg = patch_get(cls.kc.shell_channel.get_msg)
+            # patch the shell and iopub channels to pprint the messages
+            cls.kc.shell_channel.get_msg = patch_get(cls.kc.shell_channel.get_msg,
+                                                     "shell")
+            cls.kc.iopub_channel.get_msg = patch_get(cls.kc.iopub_channel.get_msg,
+                                                     "iopub")
             cls.kc.shell_channel.send = patch_send(cls.kc.shell_channel.send)
 
 
